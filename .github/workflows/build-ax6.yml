@@ -1,0 +1,134 @@
+name: 红米AX6 NSS满血固件编译
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: '编译完成后发布到 Release'
+        required: true
+        default: 'true'
+        type: boolean
+
+env:
+  REPO_URL: https://github.com/VIKINGYFY/immortalwrt
+  REPO_BRANCH: main
+  CONFIG_FILE: .config
+  DIY_SH: diy.sh
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 初始化编译环境
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet \
+            /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install -y \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison \
+            build-essential bzip2 ccache cmake cpio curl device-tree-compiler \
+            fastjar flex gawk gettext gcc-multilib g++-multilib git gperf \
+            haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev \
+            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev \
+            libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip \
+            p7zip-full patch pkgconf python3 python3-pyelftools \
+            python3-setuptools qemu-utils rsync scons squashfs-tools \
+            subversion swig texinfo uglifyjs upx-ucl unzip vim wget \
+            xmlto xxd zlib1g-dev
+          sudo timedatectl set-timezone "$TZ"
+          sudo mkdir -p /workdir && sudo chown $USER:$GROUPS /workdir
+
+      - name: 克隆 VIKINGYFY NSS 源码
+        working-directory: /workdir
+        run: |
+          git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+      - name: 执行 DIY 脚本
+        run: |
+          chmod +x $DIY_SH
+          cd openwrt && $GITHUB_WORKSPACE/$DIY_SH
+
+      - name: 更新并安装 feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: 加载自定义配置
+        run: |
+          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+          cd openwrt && make defconfig
+
+      - name: 下载编译依赖
+        run: |
+          cd openwrt
+          make download -j$(nproc)
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: 编译固件
+        id: compile
+        run: |
+          cd openwrt
+          echo "▶ $(nproc) 线程并行编译..."
+          make -j$(nproc) || make -j1 V=s
+          echo "status=success" >> $GITHUB_OUTPUT
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config \
+            | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          echo "FILE_DATE=$(date +"%Y%m%d_%H%M")" >> $GITHUB_ENV
+
+      - name: 上传 Artifacts（备用）
+        uses: actions/upload-artifact@v4
+        if: steps.compile.outputs.status == 'success'
+        with:
+          name: AX6-NSS-${{ env.DEVICE_NAME }}-${{ env.FILE_DATE }}
+          path: |
+            openwrt/bin/targets/ipq807x/generic/*.bin
+            openwrt/bin/targets/ipq807x/generic/*.ubi
+            openwrt/bin/targets/ipq807x/generic/sha256sums
+          retention-days: 7
+
+      - name: 生成 Release 标签
+        id: tag
+        if: >
+          steps.compile.outputs.status == 'success' &&
+          github.event.inputs.release == 'true'
+        run: |
+          echo "release_tag=AX6-NSS-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        if: steps.tag.outputs.status == 'success'
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: 红米AX6 NSS满血固件 ${{ steps.tag.outputs.release_tag }}
+          body: |
+            ## 红米AX6 ImmortalWrt NSS满血固件
+
+            | 项目 | 内容 |
+            |---|---|
+            | 源码 | VIKINGYFY/immortalwrt (main) |
+            | 平台 | ipq807x / qualcommax |
+            | 设备 | 红米 AX6 (RA69) |
+            | 分区 | 大分区 sysupgrade (760MB) |
+            | NSS | 满血加速 |
+            | 科学上网 | luci-app-homeproxy |
+            | DNS分流 | luci-app-mosdns |
+            | 软件商店 | luci-app-store (iStore) |
+            | 默认IP | 192.168.1.1 |
+            | 默认密码 | password |
+
+            > ⚠️ 大分区 sysupgrade 版本，刷入前请确认已完成分区扩容。
+          files: |
+            openwrt/bin/targets/ipq807x/generic/*.bin
+            openwrt/bin/targets/ipq807x/generic/*.ubi
+            openwrt/bin/targets/ipq807x/generic/sha256sums
