@@ -9,6 +9,9 @@ on:
         default: 'true'
         type: boolean
 
+permissions:
+  contents: write
+
 env:
   REPO_URL: https://github.com/VIKINGYFY/immortalwrt
   REPO_BRANCH: main
