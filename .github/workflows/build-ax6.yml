@@ -18,6 +18,7 @@ env:
   CONFIG_FILE: .config
   DIY_SH: diy.sh
   TZ: Asia/Shanghai
+  GIT_TERMINAL_PROMPT: 0
 
 jobs:
   build:
@@ -60,9 +61,19 @@ jobs:
           cd openwrt && $GITHUB_WORKSPACE/$DIY_SH
 
       - name: 更新并安装 feeds
+        env:
+          GIT_TERMINAL_PROMPT: 0
         run: |
           cd openwrt
-          ./scripts/feeds update -a
+          ./scripts/feeds update -a 2>&1 | tee /tmp/feeds_update.log || true
+          # 检查关键 feed 是否成功
+          for feed in passwall openclash; do
+            if [ ! -d "feeds/$feed" ]; then
+              echo "⚠️ $feed feed 未克隆成功，跳过"
+            else
+              echo "✅ $feed feed 正常"
+            fi
+          done
           ./scripts/feeds install -a
 
       - name: 加载自定义配置
@@ -80,36 +91,33 @@ jobs:
         id: compile
         run: |
           cd openwrt
-          echo "▶ $(nproc) 线程并行编译..."
+          echo "▶ $(nproc) 线程编译..."
           make -j$(nproc) || make -j1 V=s
           echo "status=success" >> $GITHUB_OUTPUT
           echo "FILE_DATE=$(date +"%Y%m%d_%H%M")" >> $GITHUB_ENV
 
-      - name: 查找编译产物路径
+      - name: 查找固件路径
         id: findbin
         if: steps.compile.outputs.status == 'success'
         run: |
-          cd openwrt
-          BIN_PATH=$(find bin/targets -name "*.bin" | head -1 | xargs dirname)
-          echo "BIN_DIR=$BIN_PATH" >> $GITHUB_OUTPUT
-          echo "找到固件目录: $BIN_PATH"
-          ls -lh $BIN_PATH/
+          BIN_PATH=$(find openwrt/bin/targets -name "*sysupgrade*" | head -1 | xargs dirname 2>/dev/null || echo "")
+          [ -z "$BIN_PATH" ] && BIN_PATH=$(find openwrt/bin/targets -type d | tail -1)
+          echo "BIN_DIR=${BIN_PATH}" >> $GITHUB_OUTPUT
+          echo "固件目录: $BIN_PATH" && ls -lh $BIN_PATH/ 2>/dev/null || true
 
-      - name: 上传 Artifacts（备用）
+      - name: 上传 Artifacts
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success'
         with:
-          name: AX6-NSS-${{ env.FILE_DATE }}
-          path: openwrt/${{ steps.findbin.outputs.BIN_DIR }}/
+          name: AX6-NSS-stock-${{ env.FILE_DATE }}
+          path: ${{ steps.findbin.outputs.BIN_DIR }}/
           retention-days: 7
 
       - name: 生成 Release 标签
         id: tag
-        if: >
-          steps.compile.outputs.status == 'success' &&
-          github.event.inputs.release == 'true'
+        if: steps.compile.outputs.status == 'success' && github.event.inputs.release == 'true'
         run: |
-          echo "release_tag=AX6-NSS-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          echo "release_tag=AX6-NSS-stock-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: 发布 Release
@@ -117,22 +125,13 @@ jobs:
         if: steps.tag.outputs.status == 'success'
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
-          name: 红米AX6 NSS满血固件 ${{ steps.tag.outputs.release_tag }}
+          name: 红米AX6 NSS固件(stock) ${{ steps.tag.outputs.release_tag }}
           body: |
-            ## 红米AX6 ImmortalWrt NSS满血固件
-
             | 项目 | 内容 |
             |---|---|
-            | 源码 | VIKINGYFY/immortalwrt (main) |
-            | 平台 | qualcommax / ipq807x |
-            | 设备 | 红米 AX6 (RA69) |
-            | 分区 | 大分区 sysupgrade (760MB) |
+            | 设备 | redmi,ax6-stock（无需扩容）|
             | NSS | 满血加速 |
-            | 科学上网 | luci-app-homeproxy |
-            | DNS分流 | luci-app-mosdns |
-            | 软件商店 | luci-app-store (iStore) |
+            | 插件 | PassWall / HomeProxy / OpenClash / SmartDNS / mosdns / AdGuard Home / DDNS / WOL / frp / Lucky / iStore |
             | 默认IP | 192.168.100.1 |
             | 默认密码 | password |
-
-            > ⚠️ 大分区 sysupgrade 版本，刷入前请确认已完成分区扩容。
-          files: openwrt/${{ steps.findbin.outputs.BIN_DIR }}/*
+          files: ${{ steps.findbin.outputs.BIN_DIR }}/*
