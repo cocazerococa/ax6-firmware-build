@@ -17,7 +17,17 @@ sed -i "s/ImmortalWrt/RedmiAX6-NSS/g" \
 sed -i 's/192\.168\.1\.1/192.168.100.1/g' \
   package/base-files/files/bin/config_generate 2>/dev/null || true
 
-# 设置首次启动默认语言为简体中文
+# ── 中文语言：直接写入 squashfs ──────────────────────────────
+# 方法1：直接写 /etc/config/luci（最可靠，随只读层打包进去）
+mkdir -p files/etc/config
+cat > files/etc/config/luci << 'LUCIEOF'
+config core main
+	option lang zh_Hans
+	option mediaurlbase /luci-static/bootstrap
+	option resourcebase /luci-static/resources
+LUCIEOF
+
+# 方法2：UCI defaults（首次启动再写一次，覆盖任何默认值）
 mkdir -p files/etc/uci-defaults
 cat > files/etc/uci-defaults/99-set-lang.sh << 'EOF'
 #!/bin/sh
@@ -25,5 +35,6 @@ uci -q set luci.main.lang=zh_Hans
 uci commit luci
 exit 0
 EOF
+chmod +x files/etc/uci-defaults/99-set-lang.sh
 
-echo "[DIY] feeds 已添加，主机名/IP/语言 已设置"
+echo "[DIY] feeds / 主机名 / IP / 中文语言 已设置"
