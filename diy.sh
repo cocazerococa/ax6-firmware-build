@@ -17,4 +17,13 @@ sed -i "s/ImmortalWrt/RedmiAX6-NSS/g" \
 sed -i 's/192\.168\.1\.1/192.168.100.1/g' \
   package/base-files/files/bin/config_generate 2>/dev/null || true
 
-echo "[DIY] feeds 已添加，主机名/IP 已设置"
+# 设置首次启动默认语言为简体中文
+mkdir -p files/etc/uci-defaults
+cat > files/etc/uci-defaults/99-set-lang.sh << 'EOF'
+#!/bin/sh
+uci -q set luci.main.lang=zh_Hans
+uci commit luci
+exit 0
+EOF
+
+echo "[DIY] feeds 已添加，主机名/IP/语言 已设置"
