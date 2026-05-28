@@ -75,6 +75,8 @@ jobs:
             fi
           done
           ./scripts/feeds install -a
+          # 强制安装中文语言包（防止 defconfig 裁剪）
+          ./scripts/feeds install luci-i18n-base-zh-cn 2>/dev/null || true
 
       - name: 加载自定义配置
         run: |
