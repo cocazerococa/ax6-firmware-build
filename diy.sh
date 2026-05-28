@@ -11,7 +11,6 @@ echo "src-git openclash https://github.com/vernesong/OpenClash.git;master" >> fe
 
 # iStore feed
 echo "src-git istore https://github.com/linkease/istore.git;main" >> feeds.conf.default
-echo "src-git istore_data https://github.com/linkease/istore-pkg-data.git;main" >> feeds.conf.default
 
 # 修改默认主机名
 sed -i "s/ImmortalWrt/RedmiAX6-NSS/g" \
