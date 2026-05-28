@@ -22,7 +22,7 @@ sed -i 's/192\.168\.1\.1/192.168.100.1/g' \
 mkdir -p files/etc/config
 cat > files/etc/config/luci << 'LUCIEOF'
 config core main
-	option lang zh_Hans
+	option lang zh-cn
 	option mediaurlbase /luci-static/bootstrap
 	option resourcebase /luci-static/resources
 LUCIEOF
@@ -31,7 +31,7 @@ LUCIEOF
 mkdir -p files/etc/uci-defaults
 cat > files/etc/uci-defaults/99-set-lang.sh << 'EOF'
 #!/bin/sh
-uci -q set luci.main.lang=zh_Hans
+uci -q set luci.main.lang=zh-cn
 uci commit luci
 exit 0
 EOF
