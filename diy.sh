@@ -9,6 +9,10 @@ echo "src-git passwall https://github.com/xiaorouji/openwrt-passwall.git;main" >
 # OpenClash feed（master 分支更稳定）
 echo "src-git openclash https://github.com/vernesong/OpenClash.git;master" >> feeds.conf.default
 
+# iStore feed
+echo "src-git istore https://github.com/linkease/istore.git;main" >> feeds.conf.default
+echo "src-git istore_data https://github.com/linkease/istore-pkg-data.git;main" >> feeds.conf.default
+
 # 修改默认主机名
 sed -i "s/ImmortalWrt/RedmiAX6-NSS/g" \
   package/base-files/files/bin/config_generate 2>/dev/null || true
